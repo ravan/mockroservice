@@ -1,8 +1,10 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/ravan/microservice-sim/internal/config"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
@@ -13,7 +15,7 @@ import (
 
 func mockServerHandler(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
-	fmt.Println(path)
+	fmt.Println("Mock Endpoint called: ", path)
 }
 
 func TestRun(t *testing.T) {
@@ -23,6 +25,10 @@ func TestRun(t *testing.T) {
 	require.NoError(t, err)
 	conf.Endpoints = append(conf.Endpoints, config.Endpoint{
 		Uri: "/ping",
+		Body: map[string]interface{}{
+			"ping": "pong",
+		},
+		Delay: "<5ms>",
 		Routes: []config.Route{
 			{
 				Uri: fmt.Sprintf("%s/pong", pongUri),
@@ -37,6 +43,10 @@ func TestRun(t *testing.T) {
 	resp, err := http.Get("http://localhost:8080/ping")
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
+	data := make(map[string]interface{})
+	err = json.NewDecoder(resp.Body).Decode(&data)
+	require.NoError(t, err)
+	assert.Equal(t, "pong", data["ping"])
 }
 
 // This test will trigger the process that consumes the memory
