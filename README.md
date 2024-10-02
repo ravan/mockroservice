@@ -1,15 +1,16 @@
-# Mockroservice 
+# MockroService 
 
-Application to simulate a microservice to be used in observability workshop scenarios.
-Stitch together microservice topologies controlling each mockroservice to mimic a desired behaviour.
+Simulate a microservice for observability demos.
+Stitch together application topologies controlling each MockroService to mimic a desired behaviour.
 
 
 ## Features
 
-- Ability to memory stress app
-- Ability to stress and load the computer system using [stress-ng](https://manpages.ubuntu.com/manpages/focal/man1/stress-ng.1.html)
-- Ability to define Rest Endpoints and route them to call other rest services in other mockroservices
-- Ability to define latency and error rate 
+- Memory stress 
+- Stress and load the computer system using [stress-ng](https://manpages.ubuntu.com/manpages/focal/man1/stress-ng.1.html)
+- Define rest endpoints with ability to route them to other MockroServices
+- Define latency and error rate 
+- OpenTelemetry support
 
 ## Sample Config
 
@@ -43,10 +44,27 @@ body.msg = "saved"
 uri = "/list"
 
 [[endpoints.routes]]
-uri = "product/list"  # format: "host:port/endpoint"
+uri = "another-mockroservice-host/list"  # format: "host:port/endpoint"
 delay = "1ms"  # delay before calling
 stopOnFail = false
 
+# OpenTelemetry collection information can be configured here or use standard OTEL environment variables
+[otel.trace]
+enabled = false
+tracer-name = "simservice"
+# http-endpoint
+# http-endpoint-url
+# grpc-endpoint
+# grpc-endpoint-url
+# insecure
+
+[otel.metrics]
+enabled = false
+# http-endpoint
+# http-endpoint-url
+# grpc-endpoint
+# grpc-endpoint-url
+# insecure
 
 ```
 

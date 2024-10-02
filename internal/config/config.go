@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"github.com/go-playground/validator/v10"
 	"github.com/spf13/viper"
 	"log/slog"
@@ -12,11 +13,13 @@ import (
 )
 
 type Configuration struct {
-	Address   string     `mapstructure:"address" validate:"required"`
-	Port      int        `mapstructure:"port" validate:"required"`
-	Endpoints []Endpoint `mapstructure:"endpoints"`
-	MemStress MemStress  `mapstructure:"memstress" `
-	StressNg  StressNg   `mapstructure:"stressng" `
+	ServiceName   string     `mapstructure:"service-name" `
+	Address       string     `mapstructure:"address" validate:"required"`
+	Port          int        `mapstructure:"port" validate:"required"`
+	Endpoints     []Endpoint `mapstructure:"endpoints"`
+	MemStress     MemStress  `mapstructure:"memstress" `
+	StressNg      StressNg   `mapstructure:"stressng" `
+	OpenTelemetry OtelConfig `mapstructure:"otel"`
 }
 
 type Endpoint struct {
@@ -31,6 +34,7 @@ type StressNg struct {
 	Enabled bool     `mapstructure:"enabled" `
 	Args    []string `mapstructure:"args" `
 }
+
 type MemStress struct {
 	Enabled    bool   `mapstructure:"enabled"`
 	MemSize    string `mapstructure:"memSize" validate:"required_with=Enabled"`
@@ -43,12 +47,37 @@ type Route struct {
 	StopOnFail bool   `mapstructure:"stopOnFail"`
 }
 
+type OtelConfig struct {
+	Trace   TraceConfig   `mapstructure:"trace" `
+	Metrics MetricsConfig `mapstructure:"metrics" `
+}
+
+type TraceConfig struct {
+	Enabled         bool   `mapstructure:"enabled" `
+	TracerName      string `mapstructure:"tracer-name" `
+	HttpEndpoint    string `mapstructure:"http-endpoint" `
+	HttpEndpointURL string `mapstructure:"http-endpoint-url" `
+	GrpcEndpoint    string `mapstructure:"grpc-endpoint" `
+	GrpcEndpointURL string `mapstructure:"grpc-endpoint-url" `
+	Insecure        bool   `mapstructure:"insecure" `
+}
+
+type MetricsConfig struct {
+	Enabled         bool   `mapstructure:"enabled" `
+	HttpEndpoint    string `mapstructure:"http-endpoint" `
+	HttpEndpointURL string `mapstructure:"http-endpoint-url" `
+	GrpcEndpoint    string `mapstructure:"grpc-endpoint" `
+	GrpcEndpointURL string `mapstructure:"grpc-endpoint-url" `
+	Insecure        bool   `mapstructure:"insecure" `
+}
+
 func GetConfig(configFile string) (*Configuration, error) {
 	c := &Configuration{
 		MemStress: MemStress{},
 		StressNg:  StressNg{},
 	}
 	v := viper.New()
+	v.SetDefault("service-name", "SimService")
 	v.SetDefault("address", "0.0.0.0")
 	v.SetDefault("port", 8080)
 	v.SetDefault("stressng.enabled", false)
@@ -56,6 +85,23 @@ func GetConfig(configFile string) (*Configuration, error) {
 	v.SetDefault("memstress.enabled", false)
 	v.SetDefault("memstress.memsize", "10%")
 	v.SetDefault("memstress.growthtime", "10s")
+	v.SetDefault("otel.trace.enabled", false)
+	v.SetDefault("otel.metrics.enabled", false)
+
+	v.BindEnv("otel.trace.enabled", "OTEL_EXPORTER_OTLP_TRACES_ENABLED")                //nolint:errcheck
+	v.BindEnv("otel.trace.tracer-name", "OTEL_EXPORTER_OTLP_TRACES_TRACER_NAME")        //nolint:errcheck
+	v.BindEnv("otel.trace.http-endpoint", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")         //nolint:errcheck
+	v.BindEnv("otel.trace.http-endpoint-url", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT_URL") //nolint:errcheck
+	v.BindEnv("otel.trace.grpc-endpoint", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")         //nolint:errcheck
+	v.BindEnv("otel.trace.grpc-endpoint-url", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT_URL") //nolint:errcheck
+	v.BindEnv("otel.trace.insecure", "OTEL_EXPORTER_OTLP_TRACES_INSECURE")              //nolint:errcheck
+
+	v.BindEnv("otel.metrics.enabled", "OTEL_EXPORTER_OTLP_METRICS_ENABLED")                //nolint:errcheck
+	v.BindEnv("otel.metrics.http-endpoint", "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")         //nolint:errcheck
+	v.BindEnv("otel.metrics.http-endpoint-url", "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT_URL") //nolint:errcheck
+	v.BindEnv("otel.metrics.grpc-endpoint", "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")         //nolint:errcheck
+	v.BindEnv("otel.metrics.grpc-endpoint-url", "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT_URL") //nolint:errcheck
+	v.BindEnv("otel.metrics.insecure", "OTEL_EXPORTER_OTLP_METRICS_INSECURE")              //nolint:errcheck
 
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
@@ -82,7 +128,34 @@ func GetConfig(configFile string) (*Configuration, error) {
 	if err != nil {
 		return nil, err
 	}
+	err = c.OpenTelemetry.Validate()
+	if err != nil {
+		return nil, err
+	}
 	return c, nil
+}
+
+func (c OtelConfig) Validate() error {
+	if c.Trace.Enabled && countSet(c.Trace.HttpEndpointURL, c.Trace.GrpcEndpointURL, c.Trace.HttpEndpoint, c.Trace.GrpcEndpoint) != 1 {
+		return fmt.Errorf("exactly one http or grpc endpoint is required when opentelemetry tracing is enabled")
+	}
+
+	if c.Metrics.Enabled && countSet(c.Metrics.HttpEndpointURL, c.Metrics.GrpcEndpointURL, c.Metrics.HttpEndpoint, c.Metrics.GrpcEndpoint) != 1 {
+		return fmt.Errorf("exactly one http or grpc endpoint is required when opentelemetry metrics is enabled")
+	}
+
+	return nil
+}
+
+func countSet(s ...string) int {
+	count := 0
+	for _, v := range s {
+		if v != "" {
+			count++
+		}
+	}
+
+	return count
 }
 
 type Delay struct {
