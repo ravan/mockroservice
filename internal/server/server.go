@@ -52,7 +52,9 @@ func initEndpoints(ctx context.Context, serviceName string, endpoints []config.E
 			errorEnabled: endpoint.ErrorOnCall > 0,
 		}
 		http.HandleFunc(endpoint.Uri, func(w http.ResponseWriter, r *http.Request) {
-			ctx, span := otel.Tracer.Start(ctx, fmt.Sprintf("%s.%s", serviceName, endpoint.Uri))
+			propagator := propagation.TraceContext{}
+			ctx = propagator.Extract(ctx, propagation.HeaderCarrier(r.Header))
+			ctx, span := otel.Tracer.Start(ctx, getTraceName(serviceName, endpoint))
 			defer span.End()
 			counter := counters[endpoint.Uri]
 			if counter.errorEnabled {
@@ -75,6 +77,14 @@ func initEndpoints(ctx context.Context, serviceName string, endpoints []config.E
 			handleEndpoint(ctx, serviceName, &span, &endpoint, w, r)
 		})
 	}
+}
+
+func getTraceName(serviceName string, endpoint config.Endpoint) string {
+	uri := strings.Replace(endpoint.Uri, "/", "_", -1)
+	if string(uri[0]) == "_" {
+		uri = string(uri[1:])
+	}
+	return fmt.Sprintf("%s.%s", serviceName, uri)
 }
 
 func handleEndpoint(ctx context.Context, serviceName string, span *trace.Span, endpoint *config.Endpoint, w http.ResponseWriter, r *http.Request) {

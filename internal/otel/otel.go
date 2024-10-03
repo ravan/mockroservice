@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/ravan/microservice-sim/internal/config"
+	"go.opentelemetry.io/otel/sdk/resource"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -15,6 +16,7 @@ import (
 
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 )
 
 func InitializeOpenTelemetry(ctx context.Context, cfg config.OtelConfig) (shutdown func(context.Context) error, outErr error) {
@@ -78,7 +80,13 @@ func setupTraceProvider(ctx context.Context, cfg config.TraceConfig) (*sdktrace.
 		traceExporter = exp
 	}
 
-	tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(traceExporter, sdktrace.WithBatchTimeout(5*time.Second)))
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(traceExporter, sdktrace.WithBatchTimeout(5*time.Second)),
+		sdktrace.WithResource(resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceNameKey.String(cfg.TracerName),
+		)),
+	)
 	return tp, nil
 }
 
