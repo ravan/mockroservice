@@ -23,11 +23,12 @@ type Configuration struct {
 }
 
 type Endpoint struct {
-	Uri         string                 `mapstructure:"uri" validate:"required"`
-	Delay       string                 `mapstructure:"delay" `
-	ErrorOnCall int                    `mapstructure:"errorOnCall"`
-	Body        map[string]interface{} `mapstructure:"body" `
-	Routes      []Route                `mapstructure:"routes" `
+	Uri           string                 `mapstructure:"uri" validate:"required"`
+	Delay         string                 `mapstructure:"delay" `
+	ErrorOnCall   int                    `mapstructure:"errorOnCall"`
+	Body          map[string]interface{} `mapstructure:"body" `
+	Routes        []Route                `mapstructure:"routes" `
+	DelayDuration *Delay
 }
 
 type StressNg struct {
@@ -42,9 +43,10 @@ type MemStress struct {
 }
 
 type Route struct {
-	Uri        string `mapstructure:"uri" validate:"required"`
-	Delay      string `mapstructure:"delay" `
-	StopOnFail bool   `mapstructure:"stopOnFail"`
+	Uri           string `mapstructure:"uri" validate:"required"`
+	Delay         string `mapstructure:"delay" `
+	StopOnFail    bool   `mapstructure:"stopOnFail"`
+	DelayDuration *Delay
 }
 
 type OtelConfig struct {
@@ -132,7 +134,19 @@ func GetConfig(configFile string) (*Configuration, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	ParseDelays(c)
+
 	return c, nil
+}
+
+func ParseDelays(c *Configuration) {
+	for i := range c.Endpoints {
+		c.Endpoints[i].DelayDuration = parseDelay(c.Endpoints[i].Delay)
+		for x := range c.Endpoints[i].Routes {
+			c.Endpoints[i].Routes[x].DelayDuration = parseDelay(c.Endpoints[i].Routes[x].Delay)
+		}
+	}
 }
 
 func (c OtelConfig) Validate() error {
@@ -178,7 +192,7 @@ var (
 	bothRegexp   = regexp.MustCompile(bothPattern)
 )
 
-func ParseDelay(delay string) *Delay {
+func parseDelay(delay string) *Delay {
 
 	before := "0ms"
 	after := "0ms"

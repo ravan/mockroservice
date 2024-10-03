@@ -18,6 +18,9 @@ import (
 )
 
 var counters = make(map[string]*Counter)
+var client = &http.Client{}
+var otelActive = false
+var serviceName = "service-sim"
 
 const (
 	traceParent = "traceparent"
@@ -25,86 +28,103 @@ const (
 )
 
 func Run(conf *config.Configuration) error {
+	otelActive = conf.OpenTelemetry.Trace.Enabled || conf.OpenTelemetry.Metrics.Enabled
+	serviceName = conf.ServiceName
 	ctx := context.Background()
-	shutdown, err := otel.InitializeOpenTelemetry(ctx, conf.OpenTelemetry)
-	if err != nil {
-		return err
-	}
-	defer func(ctx context.Context) {
-		err := shutdown(ctx)
+	if otelActive {
+		shutdown, err := otel.InitializeOpenTelemetry(ctx, conf.OpenTelemetry)
 		if err != nil {
-			slog.Error("Error shutting down otel:", slog.Any("error", err))
+			return err
 		}
-	}(ctx)
-
-	otel.NewTracer(conf.OpenTelemetry)
+		defer func(ctx context.Context) {
+			err := shutdown(ctx)
+			if err != nil {
+				slog.Error("Error shutting down otel:", slog.Any("error", err))
+			}
+		}(ctx)
+		otel.NewTracer(conf.OpenTelemetry)
+	}
 	addr := fmt.Sprintf("%s:%d", conf.Address, conf.Port)
-	initEndpoints(ctx, conf.ServiceName, conf.Endpoints)
+	initEndpoints(conf.Endpoints)
 	go initMemStress(&conf.MemStress)
 	go initStressNg(&conf.StressNg)
+	slog.Info("Listening on", slog.String("address", addr))
 	return http.ListenAndServe(addr, nil)
 }
 
-func initEndpoints(ctx context.Context, serviceName string, endpoints []config.Endpoint) {
-	for _, endpoint := range endpoints {
+func initEndpoints(endpoints []config.Endpoint) {
+	for i := range endpoints {
+		endpoint := &endpoints[i]
 		counters[endpoint.Uri] = &Counter{
 			errorAfter:   endpoint.ErrorOnCall,
 			errorEnabled: endpoint.ErrorOnCall > 0,
 		}
 		http.HandleFunc(endpoint.Uri, func(w http.ResponseWriter, r *http.Request) {
-			propagator := propagation.TraceContext{}
-			ctx = propagator.Extract(ctx, propagation.HeaderCarrier(r.Header))
-			ctx, span := otel.Tracer.Start(ctx, getTraceName(serviceName, endpoint))
-			defer span.End()
-			counter := counters[endpoint.Uri]
-			if counter.errorEnabled {
-				counter.Increment()
-				if counter.ShouldError() {
-					w.WriteHeader(http.StatusInternalServerError)
-					simErr := fmt.Errorf("error while processing: %s", endpoint.Uri)
-					span.RecordError(simErr)
-					span.SetStatus(codes.Error, simErr.Error())
-					err := json.NewEncoder(w).Encode(map[string]interface{}{
-						"message": simErr.Error(),
-					})
-					if err != nil {
-						http.Error(w, err.Error(), http.StatusInternalServerError)
-					}
-					counter.Reset()
-					return
-				}
-			}
-			handleEndpoint(ctx, serviceName, &span, &endpoint, w, r)
+			endpointHandler(endpoint, w, r)
 		})
 	}
 }
 
-func getTraceName(serviceName string, endpoint config.Endpoint) string {
+func endpointHandler(endpoint *config.Endpoint, w http.ResponseWriter, r *http.Request) {
+	var span trace.Span
+	ctx := r.Context()
+	if otelActive {
+		propagator := propagation.TraceContext{}
+		ctx = propagator.Extract(ctx, propagation.HeaderCarrier(r.Header))
+		ctx, span = otel.Tracer.Start(ctx, getTraceName(serviceName, endpoint))
+		defer span.End()
+	}
+	counter := counters[endpoint.Uri]
+	if counter.errorEnabled {
+		counter.Increment()
+		if counter.ShouldError() {
+			w.WriteHeader(http.StatusInternalServerError)
+			simErr := fmt.Errorf("error while processing: %s", endpoint.Uri)
+			if otelActive {
+				span.RecordError(simErr)
+				span.SetStatus(codes.Error, simErr.Error())
+			}
+			err := json.NewEncoder(w).Encode(map[string]interface{}{
+				"message": simErr.Error(),
+			})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			counter.Reset()
+			return
+		}
+	}
+	handleEndpoint(&ctx, &span, endpoint, w, r)
+}
+func getTraceName(serviceName string, endpoint *config.Endpoint) string {
 	uri := strings.Replace(endpoint.Uri, "/", "_", -1)
 	if string(uri[0]) == "_" {
-		uri = string(uri[1:])
+		uri = uri[1:]
 	}
 	return fmt.Sprintf("%s.%s", serviceName, uri)
 }
 
-func handleEndpoint(ctx context.Context, serviceName string, span *trace.Span, endpoint *config.Endpoint, w http.ResponseWriter, r *http.Request) {
+func handleEndpoint(ctx *context.Context, span *trace.Span, endpoint *config.Endpoint, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	slog.Info(fmt.Sprintf("%s %s", r.Method, r.URL.Path))
-	delay := config.ParseDelay(endpoint.Delay)
+	delay := endpoint.DelayDuration
 	if delay.Enabled && delay.BeforeDuration.Milliseconds() > 0 {
 		slog.Info("wait", "ms", delay.BeforeDuration.Milliseconds())
 		time.Sleep(delay.BeforeDuration)
 	}
 	if len(endpoint.Routes) > 0 {
-		for _, route := range endpoint.Routes {
-			err := handleRoute(ctx, serviceName, &route)
+		for i := range endpoint.Routes {
+			route := &endpoint.Routes[i]
+			err := handleRoute(ctx, route)
 			if err != nil && route.StopOnFail {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
-				(*span).RecordError(err)
-				(*span).SetStatus(codes.Error, err.Error())
+				if otelActive {
+					(*span).RecordError(err)
+					(*span).SetStatus(codes.Error, err.Error())
+				}
 				return
 			}
 		}
@@ -125,41 +145,46 @@ func handleEndpoint(ctx context.Context, serviceName string, span *trace.Span, e
 	data, err := json.Marshal(body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		(*span).RecordError(err)
-		(*span).SetStatus(codes.Error, err.Error())
+		if otelActive {
+			(*span).RecordError(err)
+			(*span).SetStatus(codes.Error, err.Error())
+		}
 	} else {
 		_, err = w.Write(data)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			(*span).RecordError(err)
-			(*span).SetStatus(codes.Error, err.Error())
+			if otelActive {
+				(*span).RecordError(err)
+				(*span).SetStatus(codes.Error, err.Error())
+			}
 		}
 	}
 }
 
-func handleRoute(ctx context.Context, serviceName string, route *config.Route) error {
-	ctx, span := otel.Tracer.Start(ctx, fmt.Sprintf("%s.Route", serviceName))
-	defer span.End()
-
-	tc := propagation.TraceContext{}
-	mc := propagation.MapCarrier{}
-
-	tc.Inject(ctx, mc)
-	client := &http.Client{}
-
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s", route.Uri), nil)
+func handleRoute(ctx *context.Context, route *config.Route) error {
+	req, err := http.NewRequestWithContext(*ctx, "GET", fmt.Sprintf("http://%s", route.Uri), nil)
 	if err != nil {
 		return err
 	}
+	var span trace.Span
+	if otelActive {
+		var newCtx context.Context
+		newCtx, span = otel.Tracer.Start(*ctx, fmt.Sprintf("%s.Route", serviceName))
+		defer span.End()
 
-	if _, ok := mc[traceParent]; ok && mc[traceParent] != "" {
-		req.Header.Add(traceParent, mc.Get(traceParent))
-	}
-	if _, ok := mc[traceState]; ok {
-		req.Header.Add(traceState, mc.Get(traceState))
-	}
+		tc := propagation.TraceContext{}
+		mc := propagation.MapCarrier{}
 
-	delay := config.ParseDelay(route.Delay)
+		tc.Inject(newCtx, mc)
+
+		if _, ok := mc[traceParent]; ok && mc[traceParent] != "" {
+			req.Header.Add(traceParent, mc.Get(traceParent))
+		}
+		if _, ok := mc[traceState]; ok {
+			req.Header.Add(traceState, mc.Get(traceState))
+		}
+	}
+	delay := route.DelayDuration
 	if delay.Enabled && delay.BeforeDuration.Milliseconds() > 0 {
 		slog.Info("wait", "ms", delay.BeforeDuration.Milliseconds())
 		time.Sleep(delay.BeforeDuration)
@@ -171,9 +196,11 @@ func handleRoute(ctx context.Context, serviceName string, route *config.Route) e
 		slog.Info("wait", "ms", delay.AfterDuration.Milliseconds())
 		time.Sleep(delay.AfterDuration)
 	}
-	span.RecordError(err)
-	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
+	if otelActive {
+		span.RecordError(err)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+		}
 	}
 	return err
 }

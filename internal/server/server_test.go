@@ -40,6 +40,7 @@ func TestRun(t *testing.T) {
 	conf, err := config.GetConfig("")
 	require.NoError(t, err)
 	conf.Endpoints = getEndpoints(server.URL)
+	config.ParseDelays(conf)
 	go func() {
 		err := Run(conf)
 		require.NoError(t, err)
@@ -98,6 +99,7 @@ func TestOtel(t *testing.T) {
 		HttpEndpoint: "localhost:4318",
 		Insecure:     true,
 	}
+	config.ParseDelays(conf)
 	go func() {
 		err := Run(conf)
 		require.NoError(t, err)
