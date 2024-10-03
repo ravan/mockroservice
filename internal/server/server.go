@@ -91,6 +91,7 @@ func endpointHandler(endpoint *config.Endpoint, w http.ResponseWriter, r *http.R
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 			counter.Reset()
+			slog.Error("Simulated Error", "triggered-nth-call", counter.errorAfter)
 			return
 		}
 	}
@@ -125,6 +126,7 @@ func handleEndpoint(ctx *context.Context, span *trace.Span, endpoint *config.End
 					(*span).RecordError(err)
 					(*span).SetStatus(codes.Error, err.Error())
 				}
+				slog.Error("Error when calling.", "target", route.Uri, slog.String("error", err.Error()))
 				return
 			}
 		}
