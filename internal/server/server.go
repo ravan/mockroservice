@@ -209,6 +209,15 @@ func handleRoute(ctx *context.Context, route *config.Route) error {
 
 func initMemStress(conf *config.MemStress) {
 	if conf.Enabled {
+		if conf.Delay != "" {
+			startDelay, err := time.ParseDuration(conf.Delay)
+			if err != nil {
+				slog.Error("Error parsing mem stress start delay", "delay", conf.Delay, "error", err)
+			} else {
+				slog.Info("mem stress start delay.", "delay", startDelay)
+				time.Sleep(startDelay)
+			}
+		}
 		slog.Info("stressing memory", "size", conf.MemSize, "timing", conf.GrowthTime)
 		duration, err := time.ParseDuration(conf.GrowthTime)
 		if err != nil {
@@ -226,6 +235,15 @@ func initMemStress(conf *config.MemStress) {
 
 func initStressNg(conf *config.StressNg) {
 	if conf.Enabled {
+		if conf.Delay != "" {
+			startDelay, err := time.ParseDuration(conf.Delay)
+			if err != nil {
+				slog.Error("Error parsing stress start delay", "delay", conf.Delay, "error", err)
+			} else {
+				slog.Info("stress start delay.", "delay", startDelay)
+				time.Sleep(startDelay)
+			}
+		}
 		slog.Info("stressing", "args", strings.Join(conf.Args, ", "))
 		stress.Stress(conf.Args)
 	}

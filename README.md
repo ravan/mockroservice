@@ -23,12 +23,14 @@ address= "0.0.0.0"
 # When enabled the service with use 10% of available memory. It will take 10 seconds to reach this limit.
 [memstress]
 enabled = false
+delay = "30s"   # wait before starting stress
 memSize = "10%" # or size in bytes
 growthTime = "10s"
 
 # When enabled the service will apply a stressng command as documented at https://wiki.ubuntu.com/Kernel/Reference/stress-ng
 [stressng]
 enabled = false
+delay = "1m"   # wait before starting stress
 args = ["-c", "0", "-l", "10"] # stress cpu at 10%
 
 # Define a "save" endpoint that will delay 1ms before starting processing and wait 1ms after processing.

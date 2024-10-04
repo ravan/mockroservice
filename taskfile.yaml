@@ -4,7 +4,7 @@ dotenv: ['./.env']
 
 vars:
   IMAGE_REPO: "{{.USER}}/mockroservice"
-  VERSION: 0.0.7
+  VERSION: 0.0.8
 
 tasks:
   docker-build:

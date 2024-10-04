@@ -33,11 +33,13 @@ type Endpoint struct {
 
 type StressNg struct {
 	Enabled bool     `mapstructure:"enabled" `
+	Delay   string   `mapstructure:"delay"`
 	Args    []string `mapstructure:"args" `
 }
 
 type MemStress struct {
 	Enabled    bool   `mapstructure:"enabled"`
+	Delay      string `mapstructure:"delay"`
 	MemSize    string `mapstructure:"memSize" validate:"required_with=Enabled"`
 	GrowthTime string `mapstructure:"growthTime" validate:"required_with=Enabled"`
 }
@@ -83,8 +85,10 @@ func GetConfig(configFile string) (*Configuration, error) {
 	v.SetDefault("address", "0.0.0.0")
 	v.SetDefault("port", 8080)
 	v.SetDefault("stressng.enabled", false)
+	v.SetDefault("stressng.delay", "")
 	v.SetDefault("stressng.args", []string{"-c", "0", "-l", "10"})
 	v.SetDefault("memstress.enabled", false)
+	v.SetDefault("memstress.delay", "")
 	v.SetDefault("memstress.memsize", "10%")
 	v.SetDefault("memstress.growthtime", "10s")
 	v.SetDefault("otel.trace.enabled", false)
