@@ -1,0 +1,59 @@
+# THIS FILE IS USED FOR HELM GENERATION DEMO
+
+serviceName = "brontoclient"
+[memstress]
+enabled = false
+
+[[endpoints]]
+uri = "/list"
+delay = "<1ms>"
+
+[[endpoints.routes]]
+uri = "raptoring/fetch-data"
+delay = "1ms"
+stopOnFail = false
+
+[[endpoints]]
+uri = "/save"
+delay = "1ms<>2ms"
+errorOnCall = 20
+body.status = "ok"
+body.msg = "data saved"
+
++++
+
+serviceName = "raptoring"
+
+[[endpoints]]
+uri = "/fetch-data"
+delay = "<2ms>"
+errorOnCall = 0
+body.status = "ok"
+body.msg = "data fetched from TyrannoDB"
+
+[[endpoints.routes]]
+uri = "tyrannodb/get"
+delay = "2ms"
+stopOnFail = true
+
++++
+
+serviceName = "tyrannodb"
+[memstress]
+enabled = false
+
+[stressng]
+enabled = false
+
+[[endpoints]]
+uri = "/get"
+delay = "1ms"
+errorOnCall = 0
+body.status = "ok"
+body.msg = "data fetched"
+
+[[endpoints]]
+uri = "/store"
+delay = "2ms"
+body.status = "ok"
+body.msg = "data stored"

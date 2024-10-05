@@ -13,7 +13,7 @@ import (
 )
 
 type Configuration struct {
-	ServiceName   string     `mapstructure:"service-name" `
+	ServiceName   string     `mapstructure:"serviceName" `
 	Address       string     `mapstructure:"address" validate:"required"`
 	Port          int        `mapstructure:"port" validate:"required"`
 	Endpoints     []Endpoint `mapstructure:"endpoints"`
@@ -117,6 +117,7 @@ func GetConfig(configFile string) (*Configuration, error) {
 			d = "."
 		}
 		v.SetConfigName(f[0 : len(f)-len(filepath.Ext(f))])
+		v.SetConfigType("toml")
 		v.AddConfigPath(d)
 		err := v.ReadInConfig()
 		if err != nil {
