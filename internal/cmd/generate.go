@@ -199,7 +199,10 @@ const questionsTemplate = `questions:
 const valuesTemplate = `hungry: 'no'
 nameOverride: ''
 fullnameOverride: ''
-image: ravan/mockroservice:0.0.9
+otelHttpEndpoint: open-telemetry-collector.open-telemetry.svc.cluster.local:4318
+traceEnabled: false
+metricsEnabled: false
+image: ravan/mockroservice:0.0.12
 resources:
   requests:
     memory: '8Mi'
@@ -282,7 +285,17 @@ metadata:
 data:
   config.toml: |
      [[config]]
+     
+     [otel.trace]
+     enabled = {{.Values.traceEnabled}}
+     tracer-name = "[[serviceName]]"
+     http-endpoint = "{{.Values.otelHttpEndpoint}}"
+
+     [otel.metrics]
+     enabled = {{.Values.metricsEnabled}}
+     http-endpoint = "{{.Values.otelHttpEndpoint}}" 
 `
+
 const deploymentTemplate = `apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -299,7 +312,7 @@ spec:
   template:
     metadata:
       labels:
-		{{- include "common.labels" . | nindent 8 }}
+        {{- include "common.labels" . | nindent 8 }}
         service: [[serviceName]] 
       annotations:
         checksum/config: '{{ include (print $.Template.BasePath "/[[serviceName]]-cm.yaml") . | sha256sum}}'
@@ -336,7 +349,7 @@ metadata:
 spec:
   selector:
     service: [[serviceName]]
-	{{- include "common.selectorLabels" . | nindent 4 }}
+    {{- include "common.selectorLabels" . | nindent 4 }}
   ports:
     - protocol: TCP
       port: 80      # Service port
