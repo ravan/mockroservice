@@ -24,6 +24,7 @@ func NewGenerateCommand() *cli.Command {
 			}
 			name := ctx.String("name")
 			output := ctx.String("output")
+			slog.Info("Generating Helm Chart ", "name", name)
 			err := processMultipartConfig(configFile, name, output)
 			if err != nil {
 				return err
@@ -96,7 +97,8 @@ func getConfigDataFunc(config *ConfigData) template.DataFunc {
 				return w.Write([]byte(sanitizeName(config.Config.ServiceName)))
 
 			case "config":
-				return w.Write(config.Content)
+				indentContent := bytes.ReplaceAll(config.Content, []byte("\n"), []byte("\n     "))
+				return w.Write(indentContent)
 
 			default:
 				return w.Write([]byte(fmt.Sprintf("[unknown tag %q]", tag)))
@@ -279,7 +281,7 @@ metadata:
     {{- include "common.labels" . | nindent 4 }}
 data:
   config.toml: |
-	[[config]]
+     [[config]]
 `
 const deploymentTemplate = `apiVersion: apps/v1
 kind: Deployment
