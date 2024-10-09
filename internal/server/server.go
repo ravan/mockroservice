@@ -80,15 +80,12 @@ func endpointHandler(endpoint *config.Endpoint, w http.ResponseWriter, r *http.R
 		if counter.ShouldError() {
 			w.WriteHeader(http.StatusInternalServerError)
 			simErr := fmt.Errorf("error while processing: %s", endpoint.Uri)
-			if otelActive {
-				span.RecordError(simErr)
-				span.SetStatus(codes.Error, simErr.Error())
-			}
+			recordSpanError(&span, simErr)
 			err := json.NewEncoder(w).Encode(map[string]interface{}{
 				"message": simErr.Error(),
 			})
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				setupInternalServerError(w, err, &span)
 			}
 			counter.Reset()
 			slog.Error("Simulated Error", "triggered-nth-call", counter.errorAfter)
@@ -98,8 +95,8 @@ func endpointHandler(endpoint *config.Endpoint, w http.ResponseWriter, r *http.R
 	handleEndpoint(&ctx, &span, endpoint, w, r)
 }
 func getTraceName(serviceName string, endpoint *config.Endpoint) string {
-	uri := strings.Replace(endpoint.Uri, "/", "_", -1)
-	if string(uri[0]) == "_" {
+	uri := strings.Replace(endpoint.Uri, "/", ".", -1)
+	if string(uri[0]) == "." {
 		uri = uri[1:]
 	}
 	return fmt.Sprintf("%s.%s", serviceName, uri)
@@ -108,12 +105,13 @@ func getTraceName(serviceName string, endpoint *config.Endpoint) string {
 func handleEndpoint(ctx *context.Context, span *trace.Span, endpoint *config.Endpoint, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
+		recordSpanError(span, fmt.Errorf("%s is not allowed", r.Method))
 		return
 	}
 	slog.Info(fmt.Sprintf("%s %s", r.Method, r.URL.Path))
 	delay := endpoint.DelayDuration
 	if delay.Enabled && delay.BeforeDuration.Milliseconds() > 0 {
-		slog.Info("wait", "ms", delay.BeforeDuration.Milliseconds())
+		slog.Info("latency before routing", "ms", delay.BeforeDuration.Milliseconds())
 		time.Sleep(delay.BeforeDuration)
 	}
 	if len(endpoint.Routes) > 0 {
@@ -121,18 +119,14 @@ func handleEndpoint(ctx *context.Context, span *trace.Span, endpoint *config.End
 			route := &endpoint.Routes[i]
 			err := handleRoute(ctx, route)
 			if err != nil && route.StopOnFail {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				if otelActive {
-					(*span).RecordError(err)
-					(*span).SetStatus(codes.Error, err.Error())
-				}
+				setupInternalServerError(w, err, span)
 				slog.Error("Error when calling.", "target", route.Uri, slog.String("error", err.Error()))
 				return
 			}
 		}
 	}
 	if delay.Enabled && delay.AfterDuration.Milliseconds() > 0 {
-		slog.Info("wait", "ms", delay.AfterDuration.Milliseconds())
+		slog.Info("latency after routing", "ms", delay.AfterDuration.Milliseconds())
 		time.Sleep(delay.AfterDuration)
 	}
 
@@ -146,20 +140,24 @@ func handleEndpoint(ctx *context.Context, span *trace.Span, endpoint *config.End
 	}
 	data, err := json.Marshal(body)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		if otelActive {
-			(*span).RecordError(err)
-			(*span).SetStatus(codes.Error, err.Error())
-		}
+		setupInternalServerError(w, err, span)
 	} else {
 		_, err = w.Write(data)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			if otelActive {
-				(*span).RecordError(err)
-				(*span).SetStatus(codes.Error, err.Error())
-			}
+			setupInternalServerError(w, err, span)
 		}
+	}
+}
+
+func setupInternalServerError(w http.ResponseWriter, err error, span *trace.Span) {
+	http.Error(w, err.Error(), http.StatusInternalServerError)
+	recordSpanError(span, err)
+}
+
+func recordSpanError(span *trace.Span, err error) {
+	if otelActive {
+		(*span).RecordError(err)
+		(*span).SetStatus(codes.Error, err.Error())
 	}
 }
 
@@ -171,7 +169,8 @@ func handleRoute(ctx *context.Context, route *config.Route) error {
 	var span trace.Span
 	if otelActive {
 		var newCtx context.Context
-		newCtx, span = otel.Tracer.Start(*ctx, fmt.Sprintf("%s.Route", serviceName))
+		newCtx, span = otel.Tracer.Start(*ctx,
+			fmt.Sprintf("%s.%s", serviceName, strings.ReplaceAll(route.Uri, "/", ".")))
 		defer span.End()
 
 		tc := propagation.TraceContext{}
@@ -188,21 +187,20 @@ func handleRoute(ctx *context.Context, route *config.Route) error {
 	}
 	delay := route.DelayDuration
 	if delay.Enabled && delay.BeforeDuration.Milliseconds() > 0 {
-		slog.Info("wait", "ms", delay.BeforeDuration.Milliseconds())
+		slog.Info("latency before call", "ms", delay.BeforeDuration.Milliseconds(), "target", route.Uri)
 		time.Sleep(delay.BeforeDuration)
 	}
-	slog.Info("calling", "http", route.Uri)
+	slog.Info("calling", "target", route.Uri)
 	_, err = client.Do(req)
+	slog.Info("returned", "target", route.Uri, slog.Any("error", err))
 
 	if delay.Enabled && delay.AfterDuration.Milliseconds() > 0 {
-		slog.Info("wait", "ms", delay.AfterDuration.Milliseconds())
+		slog.Info("latency after call", "ms", delay.AfterDuration.Milliseconds(), "target", route.Uri)
 		time.Sleep(delay.AfterDuration)
 	}
-	if otelActive {
+	if otelActive && err != nil {
 		span.RecordError(err)
-		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
-		}
+		span.SetStatus(codes.Error, err.Error())
 	}
 	return err
 }

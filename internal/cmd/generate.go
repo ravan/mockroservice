@@ -199,10 +199,10 @@ const questionsTemplate = `questions:
 const valuesTemplate = `hungry: 'no'
 nameOverride: ''
 fullnameOverride: ''
-otelHttpEndpoint: open-telemetry-collector.open-telemetry.svc.cluster.local:4318
+otelHttpEndpoint: opentelemetry-collector.open-telemetry.svc.cluster.local:4318
 traceEnabled: false
 metricsEnabled: false
-image: ravan/mockroservice:0.0.12
+image: ravan/mockroservice:0.0.14
 resources:
   requests:
     memory: '8Mi'
@@ -290,10 +290,12 @@ data:
      enabled = {{.Values.traceEnabled}}
      tracer-name = "[[serviceName]]"
      http-endpoint = "{{.Values.otelHttpEndpoint}}"
+     insecure = true
 
      [otel.metrics]
      enabled = {{.Values.metricsEnabled}}
      http-endpoint = "{{.Values.otelHttpEndpoint}}" 
+     insecure = true
 `
 
 const deploymentTemplate = `apiVersion: apps/v1
