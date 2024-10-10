@@ -2,6 +2,7 @@ package util
 
 import (
 	"bytes"
+	"github.com/Masterminds/sprig/v3"
 	"log/slog"
 	"strings"
 	"sync"
@@ -96,7 +97,7 @@ func parseTemplate(tplName, tplString string) *template.Template {
 	if tplString == "" {
 		return emptyTemplate
 	}
-	tpl := template.New(tplName)
+	tpl := template.New(tplName).Funcs(sprig.FuncMap())
 	tpl.Delims("[[", "]]")
 	parsed, err := tpl.Parse(tplString)
 	if err != nil {

@@ -10,7 +10,8 @@ Stitch together application topologies controlling each MockroService to mimic a
 - Stress and load the computer system using [stress-ng](https://manpages.ubuntu.com/manpages/focal/man1/stress-ng.1.html)
 - Define rest endpoints with ability to route them to other MockroServices
 - Define latency and error rate 
-- Define log messages to simulate functional processing during endpoint and route calling. 
+- Define log messages to simulate functional processing during endpoint and route execution 
+  - Messages define using golang templates and [Sprig](https://masterminds.github.io/sprig/) 
 - OpenTelemetry support
 
 ## Sample Config
@@ -27,7 +28,7 @@ logLevel = "info"   # debug, warn, error
 [memstress]
 enabled = false
 delay = "30s"   # wait before starting stress
-memSize = "10%" # or size in bytes
+memSize = "10 MB" # humanize size like KB, MB, GB, or a percentage  
 growthTime = "10s"
 
 # When enabled the service will apply a stressng command as documented at https://wiki.ubuntu.com/Kernel/Reference/stress-ng
@@ -45,16 +46,15 @@ body.status = "ok"
 body.msg = "saved"
 
 # Custom log messages can be defined for endpoints. Messages are golang text template using "[[" and "]]" delimiters
-# You can access to .Env, ServiceName and .Endpoint variables.
+# You can access .Env, ServiceName and .Endpoint variables.
 [[endpoints.logging]]
 before = "before [[.Endpoint.Uri]]"
-beforeLevel = "Warn"
-after = "after [[.Endpoint.Uri]]"
-afterLevel =   "Info"
-logOnCall =   1
+beforeLevel = "Warn"  # optional, defaults to info
+after = "after [[.Endpoint.Uri]]" #optional
+afterLevel =   "Info" # optinal
+logOnCall =   1 # Log on every nth call. Use 0 to disable.
 
-# Custom error messages can be defined for endpoints. Messages are golang text template using "[[" and "]]" delimiters
-# You can access to .Env, ServiceName and .Endpoint variables.
+# Custom error messages can be defined for endpoints. 
 [[endpoints.errorLogging]]
 before = "internal error occurred while processing [[.Endpoint.Uri]]"
 
@@ -67,10 +67,11 @@ uri = "another-mockroservice-host/list"  # format: "host:port/endpoint"
 delay = "1ms"  # delay before calling
 stopOnFail = false
 
-# Custom error messages can be defined for routes. Messages are golang text template using "[[" and "]]" delimiters
-# You can access to .Env, ServiceName and .Route variables.
+# Custom error messages can be defined for routes.
+# You can access .Env, ServiceName and .Route variables.
 [[endpoints.routes.logging]]
 before = "listing interest rates from [[.Route.Uri]]"
+logOnCall = 10   # only log on every 10th call
 
 # OpenTelemetry collection information can be configured here or use standard OTEL environment variables
 [otel.trace]
@@ -84,11 +85,7 @@ tracer-name = "simservice"
 
 [otel.metrics]
 enabled = false
-# http-endpoint
-# http-endpoint-url
-# grpc-endpoint
-# grpc-endpoint-url
-# insecure
+# same connectivity variables as in otel.trace
 
 ```
 

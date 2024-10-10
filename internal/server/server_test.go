@@ -32,7 +32,7 @@ func getEndpoints(serverUrl string) []config.Endpoint {
 		},
 		Delay: "<5ms>",
 		Logging: util.Logging{
-			Before:      "before [[.Endpoint.Uri]]",
+			Before:      "before [[ $mylist := list \"a\" \"b\"]] [[index $mylist 1]]  [[.Endpoint.Uri]]",
 			After:       "after [[.Endpoint.Uri]]",
 			BeforeLevel: "Warn",
 			AfterLevel:  "Info",
