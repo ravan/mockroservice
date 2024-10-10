@@ -47,7 +47,7 @@ body.msg = "saved"
 
 # Custom log messages can be defined for endpoints. Messages are golang text template using "[[" and "]]" delimiters
 # You can access .Env, ServiceName and .Endpoint variables.
-[[endpoints.logging]]
+[endpoints.logging]
 before = "before [[.Endpoint.Uri]]"
 beforeLevel = "Warn"  # optional, defaults to info
 after = "after [[.Endpoint.Uri]]" #optional
@@ -55,7 +55,7 @@ afterLevel =   "Info" # optinal
 logOnCall =   1 # Log on every nth call. Use 0 to disable.
 
 # Custom error messages can be defined for endpoints. 
-[[endpoints.errorLogging]]
+[endpoints.errorLogging]
 before = "internal error occurred while processing [[.Endpoint.Uri]]"
 
 # Define a "list" endpoint that calls the "list" endpoint at host called "product"
@@ -69,7 +69,7 @@ stopOnFail = false
 
 # Custom error messages can be defined for routes.
 # You can access .Env, ServiceName and .Route variables.
-[[endpoints.routes.logging]]
+[endpoints.routes.logging]
 before = "listing interest rates from [[.Route.Uri]]"
 logOnCall = 10   # only log on every 10th call
 

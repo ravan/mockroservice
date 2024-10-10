@@ -202,7 +202,7 @@ fullnameOverride: ''
 otelHttpEndpoint: opentelemetry-collector.open-telemetry.svc.cluster.local:4318
 traceEnabled: false
 metricsEnabled: false
-image: ravan/mockroservice:0.0.16
+image: ravan/mockroservice:0.0.17
 resources:
   requests:
     memory: '8Mi'

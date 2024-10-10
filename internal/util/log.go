@@ -115,7 +115,7 @@ func renderTemplate(tpl *template.Template, data any) string {
 		slog.Error("Error executing template", slog.Any("error", err))
 		return ""
 	}
-	return out.String()
+	return strings.TrimSpace(out.String())
 }
 
 func logOutput(level, lines string) {

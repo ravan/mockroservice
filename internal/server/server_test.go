@@ -32,7 +32,7 @@ func getEndpoints(serverUrl string) []config.Endpoint {
 		},
 		Delay: "<5ms>",
 		Logging: util.Logging{
-			Before:      "before [[ $mylist := list \"a\" \"b\"]] [[index $mylist 1]]  [[.Endpoint.Uri]]",
+			Before:      "[[ $options := list \"a \" \"b\" \"c\" ]]\n     [[ $i := randInt 0 3 ]]\n     [[ index $options $i ]]",
 			After:       "after [[.Endpoint.Uri]]",
 			BeforeLevel: "Warn",
 			AfterLevel:  "Info",
