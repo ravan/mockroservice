@@ -16,6 +16,7 @@ type Configuration struct {
 	ServiceName   string     `mapstructure:"serviceName" `
 	Address       string     `mapstructure:"address" validate:"required"`
 	Port          int        `mapstructure:"port" validate:"required"`
+	LogLevel      string     `mapstructure:"logLevel" validate:"oneof=debug info warn error"`
 	Endpoints     []Endpoint `mapstructure:"endpoints"`
 	MemStress     MemStress  `mapstructure:"memstress" `
 	StressNg      StressNg   `mapstructure:"stressng" `
@@ -81,9 +82,10 @@ func GetConfig(configFile string) (*Configuration, error) {
 		StressNg:  StressNg{},
 	}
 	v := viper.New()
-	v.SetDefault("service-name", "SimService")
+	v.SetDefault("serviceName", "SimService")
 	v.SetDefault("address", "0.0.0.0")
 	v.SetDefault("port", 8080)
+	v.SetDefault("logLevel", "info")
 	v.SetDefault("stressng.enabled", false)
 	v.SetDefault("stressng.delay", "")
 	v.SetDefault("stressng.args", []string{"-c", "0", "-l", "10"})

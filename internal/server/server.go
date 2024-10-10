@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -28,6 +29,7 @@ const (
 )
 
 func Run(conf *config.Configuration) error {
+	setDefaultLogLevel(conf.LogLevel)
 	otelActive = conf.OpenTelemetry.Trace.Enabled || conf.OpenTelemetry.Metrics.Enabled
 	serviceName = conf.ServiceName
 	ctx := context.Background()
@@ -108,10 +110,10 @@ func handleEndpoint(ctx *context.Context, span *trace.Span, endpoint *config.End
 		recordSpanError(span, fmt.Errorf("%s is not allowed", r.Method))
 		return
 	}
-	slog.Info(fmt.Sprintf("%s %s", r.Method, r.URL.Path))
+	slog.Debug(fmt.Sprintf("%s %s", r.Method, r.URL.Path))
 	delay := endpoint.DelayDuration
 	if delay.Enabled && delay.BeforeDuration.Milliseconds() > 0 {
-		slog.Info("latency before routing", "ms", delay.BeforeDuration.Milliseconds())
+		slog.Debug("latency before routing", "ms", delay.BeforeDuration.Milliseconds())
 		time.Sleep(delay.BeforeDuration)
 	}
 	if len(endpoint.Routes) > 0 {
@@ -124,9 +126,12 @@ func handleEndpoint(ctx *context.Context, span *trace.Span, endpoint *config.End
 				return
 			}
 		}
+	} else {
+		slog.Debug("no routes defined")
 	}
+
 	if delay.Enabled && delay.AfterDuration.Milliseconds() > 0 {
-		slog.Info("latency after routing", "ms", delay.AfterDuration.Milliseconds())
+		slog.Debug("latency after routing", "ms", delay.AfterDuration.Milliseconds())
 		time.Sleep(delay.AfterDuration)
 	}
 
@@ -187,15 +192,15 @@ func handleRoute(ctx *context.Context, route *config.Route) error {
 	}
 	delay := route.DelayDuration
 	if delay.Enabled && delay.BeforeDuration.Milliseconds() > 0 {
-		slog.Info("latency before call", "ms", delay.BeforeDuration.Milliseconds(), "target", route.Uri)
+		slog.Debug("latency before call", "ms", delay.BeforeDuration.Milliseconds(), "target", route.Uri)
 		time.Sleep(delay.BeforeDuration)
 	}
-	slog.Info("calling", "target", route.Uri)
+	slog.Debug("calling", "target", route.Uri)
 	_, err = client.Do(req)
-	slog.Info("returned", "target", route.Uri, slog.Any("error", err))
+	slog.Debug("returned", "target", route.Uri, slog.Any("error", err))
 
 	if delay.Enabled && delay.AfterDuration.Milliseconds() > 0 {
-		slog.Info("latency after call", "ms", delay.AfterDuration.Milliseconds(), "target", route.Uri)
+		slog.Debug("latency after call", "ms", delay.AfterDuration.Milliseconds(), "target", route.Uri)
 		time.Sleep(delay.AfterDuration)
 	}
 	if otelActive && err != nil {
@@ -212,7 +217,7 @@ func initMemStress(conf *config.MemStress) {
 			if err != nil {
 				slog.Error("Error parsing mem stress start delay", "delay", conf.Delay, "error", err)
 			} else {
-				slog.Info("mem stress start delay.", "delay", startDelay)
+				slog.Debug("mem stress start delay.", "delay", startDelay)
 				time.Sleep(startDelay)
 			}
 		}
@@ -238,11 +243,31 @@ func initStressNg(conf *config.StressNg) {
 			if err != nil {
 				slog.Error("Error parsing stress start delay", "delay", conf.Delay, "error", err)
 			} else {
-				slog.Info("stress start delay.", "delay", startDelay)
+				slog.Debug("stress start delay.", "delay", startDelay)
 				time.Sleep(startDelay)
 			}
 		}
 		slog.Info("stressing", "args", strings.Join(conf.Args, ", "))
 		stress.Stress(conf.Args)
 	}
+}
+
+func setDefaultLogLevel(stringLevel string) {
+	level := slog.LevelInfo
+	switch stringLevel {
+	case "debug":
+		level = slog.LevelDebug
+	case "info":
+		level = slog.LevelInfo
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	}
+
+	handler := slog.NewTextHandler(log.Writer(), &slog.HandlerOptions{
+		Level: level,
+	})
+	slog.SetDefault(slog.New(handler))
+
 }

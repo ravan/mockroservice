@@ -39,6 +39,7 @@ func TestRun(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(mockServerHandler))
 	conf, err := config.GetConfig("")
 	require.NoError(t, err)
+	conf.LogLevel = "debug"
 	conf.Endpoints = getEndpoints(server.URL)
 	config.ParseDelays(conf)
 	go func() {
