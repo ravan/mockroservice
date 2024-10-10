@@ -3,33 +3,46 @@ package config
 import (
 	"fmt"
 	"github.com/go-playground/validator/v10"
+	"github.com/ravan/microservice-sim/internal/util"
 	"github.com/spf13/viper"
 	"log/slog"
 	"path"
 	"path/filepath"
-	"regexp"
 	"strings"
-	"time"
+	"sync"
 )
 
 type Configuration struct {
-	ServiceName   string     `mapstructure:"serviceName" `
-	Address       string     `mapstructure:"address" validate:"required"`
-	Port          int        `mapstructure:"port" validate:"required"`
-	LogLevel      string     `mapstructure:"logLevel" validate:"oneof=debug info warn error"`
-	Endpoints     []Endpoint `mapstructure:"endpoints"`
-	MemStress     MemStress  `mapstructure:"memstress" `
-	StressNg      StressNg   `mapstructure:"stressng" `
-	OpenTelemetry OtelConfig `mapstructure:"otel"`
+	ServiceName   string       `mapstructure:"serviceName" `
+	Address       string       `mapstructure:"address" validate:"required"`
+	Port          int          `mapstructure:"port" validate:"required"`
+	LogLevel      string       `mapstructure:"logLevel"`
+	Logging       util.Logging `mapstructure:"logging"`
+	Endpoints     []Endpoint   `mapstructure:"endpoints"`
+	MemStress     MemStress    `mapstructure:"memstress" `
+	StressNg      StressNg     `mapstructure:"stressng" `
+	OpenTelemetry OtelConfig   `mapstructure:"otel"`
 }
 
 type Endpoint struct {
 	Uri           string                 `mapstructure:"uri" validate:"required"`
 	Delay         string                 `mapstructure:"delay" `
 	ErrorOnCall   int                    `mapstructure:"errorOnCall"`
+	ErrorLogging  util.Logging           `mapstructure:"errorLogging"`
+	Logging       util.Logging           `mapstructure:"logging"`
 	Body          map[string]interface{} `mapstructure:"body" `
 	Routes        []Route                `mapstructure:"routes" `
-	DelayDuration *Delay
+	mutex         sync.Mutex
+	delayDuration *util.Delay
+}
+
+func (e *Endpoint) GetDelayDuration() *util.Delay {
+	if e.delayDuration == nil {
+		e.mutex.Lock()
+		e.delayDuration = util.ParseDelay(e.Delay)
+		e.mutex.Unlock()
+	}
+	return e.delayDuration
 }
 
 type StressNg struct {
@@ -46,10 +59,21 @@ type MemStress struct {
 }
 
 type Route struct {
-	Uri           string `mapstructure:"uri" validate:"required"`
-	Delay         string `mapstructure:"delay" `
-	StopOnFail    bool   `mapstructure:"stopOnFail"`
-	DelayDuration *Delay
+	Uri           string       `mapstructure:"uri" validate:"required"`
+	Delay         string       `mapstructure:"delay" `
+	StopOnFail    bool         `mapstructure:"stopOnFail"`
+	Logging       util.Logging `mapstructure:"logging"`
+	mutex         sync.Mutex
+	delayDuration *util.Delay
+}
+
+func (r *Route) GetDelayDuration() *util.Delay {
+	if r.delayDuration == nil {
+		r.mutex.Lock()
+		r.delayDuration = util.ParseDelay(r.Delay)
+		r.mutex.Unlock()
+	}
+	return r.delayDuration
 }
 
 type OtelConfig struct {
@@ -142,18 +166,7 @@ func GetConfig(configFile string) (*Configuration, error) {
 		return nil, err
 	}
 
-	ParseDelays(c)
-
 	return c, nil
-}
-
-func ParseDelays(c *Configuration) {
-	for i := range c.Endpoints {
-		c.Endpoints[i].DelayDuration = parseDelay(c.Endpoints[i].Delay)
-		for x := range c.Endpoints[i].Routes {
-			c.Endpoints[i].Routes[x].DelayDuration = parseDelay(c.Endpoints[i].Routes[x].Delay)
-		}
-	}
 }
 
 func (c OtelConfig) Validate() error {
@@ -177,60 +190,4 @@ func countSet(s ...string) int {
 	}
 
 	return count
-}
-
-type Delay struct {
-	Enabled        bool
-	BeforeDuration time.Duration
-	AfterDuration  time.Duration
-}
-
-const (
-	aroundPattern = "^<([0-9a-z]*)>$"
-	beforePattern = "^([0-9a-z]*)[<]?"
-	afterPattern  = "[>]([0-9a-z]*)$"
-	bothPattern   = "([0-9a-z]*)[<][>]([0-9a-z]*)"
-)
-
-var (
-	aroundRegexp = regexp.MustCompile(aroundPattern)
-	beforeRegexp = regexp.MustCompile(beforePattern)
-	afterRegexp  = regexp.MustCompile(afterPattern)
-	bothRegexp   = regexp.MustCompile(bothPattern)
-)
-
-func parseDelay(delay string) *Delay {
-
-	before := "0ms"
-	after := "0ms"
-	if delay != "" {
-		if aroundMatch := aroundRegexp.FindStringSubmatch(delay); aroundMatch != nil {
-			before = aroundMatch[1]
-			after = aroundMatch[1]
-		} else if bothMatch := bothRegexp.FindStringSubmatch(delay); bothMatch != nil {
-			before = bothMatch[1]
-			after = bothMatch[2]
-		} else if beforeMatch := beforeRegexp.FindStringSubmatch(delay); beforeMatch != nil {
-			before = beforeMatch[1]
-		} else if afterMatch := afterRegexp.FindStringSubmatch(delay); afterMatch != nil {
-			after = afterMatch[1]
-		}
-	}
-
-	disabled := false
-	beforeDuration, err := time.ParseDuration(before)
-	if err != nil {
-		disabled = true
-		slog.Error("failed to parse duration", "delay", delay, "duration", before)
-	}
-	afterDuration, err := time.ParseDuration(after)
-	if err != nil {
-		disabled = true
-		slog.Error("failed to parse duration", "delay", delay, "duration", after)
-	}
-	return &Delay{
-		Enabled:        !disabled,
-		BeforeDuration: beforeDuration,
-		AfterDuration:  afterDuration,
-	}
 }

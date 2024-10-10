@@ -1,15 +1,19 @@
 package server
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/ravan/microservice-sim/internal/config"
+	"github.com/ravan/microservice-sim/internal/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"text/template"
 	"time"
 )
 
@@ -27,26 +31,52 @@ func getEndpoints(serverUrl string) []config.Endpoint {
 			"ping": "pong",
 		},
 		Delay: "<5ms>",
+		Logging: util.Logging{
+			Before:      "before [[.Endpoint.Uri]]",
+			After:       "after [[.Endpoint.Uri]]",
+			BeforeLevel: "Warn",
+			AfterLevel:  "Info",
+			LogOnCall:   1,
+		},
 		Routes: []config.Route{
 			{
 				Uri: fmt.Sprintf("%s/pong", pongUri),
+				Logging: util.Logging{
+					Before:      "before [[.Route.Uri]]",
+					After:       "after [[.Route.Uri]]",
+					BeforeLevel: "Warning",
+					AfterLevel:  "Info",
+					LogOnCall:   2,
+				},
 			},
 		},
 	})
 	return endpoints
 }
+
+func TestTemplate(t *testing.T) {
+	tpl, err := template.New("test").Parse("")
+	require.NoError(t, err)
+
+	var b bytes.Buffer
+	writer := bufio.NewWriter(&b)
+	err = tpl.Execute(writer, nil)
+	require.NoError(t, err)
+	fmt.Println(b.String())
+}
+
 func TestRun(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(mockServerHandler))
 	conf, err := config.GetConfig("")
 	require.NoError(t, err)
-	conf.LogLevel = "debug"
+	conf.LogLevel = "info"
 	conf.Endpoints = getEndpoints(server.URL)
-	config.ParseDelays(conf)
 	go func() {
 		err := Run(conf)
 		require.NoError(t, err)
 	}()
 	time.Sleep(1 * time.Second)
+	_, _ = http.Get("http://localhost:8080/ping")
 	resp, err := http.Get("http://localhost:8080/ping")
 	defer resp.Body.Close()
 	require.NoError(t, err)
@@ -100,7 +130,6 @@ func TestOtel(t *testing.T) {
 		HttpEndpoint: "localhost:4318",
 		Insecure:     true,
 	}
-	config.ParseDelays(conf)
 	go func() {
 		err := Run(conf)
 		require.NoError(t, err)

@@ -1,12 +1,12 @@
-package server
+package util
 
 import "sync"
 
 type Counter struct {
-	mu           sync.Mutex
-	counter      int
-	errorAfter   int
-	errorEnabled bool
+	mu        sync.Mutex
+	counter   int
+	TriggerOn int
+	Active    bool
 }
 
 func (c *Counter) Reset() {
@@ -26,12 +26,14 @@ func (c *Counter) Increment() {
 
 func (c *Counter) GetCount() int {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.counter
+	count := c.counter
+	c.mu.Unlock()
+	return count
 }
 
-func (c *Counter) ShouldError() bool {
+func (c *Counter) ShouldTrigger() bool {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.errorEnabled && c.counter >= c.errorAfter-1
+	r := c.Active && c.counter >= c.TriggerOn-1
+	c.mu.Unlock()
+	return r
 }
