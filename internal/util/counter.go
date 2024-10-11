@@ -18,7 +18,7 @@ func (c *Counter) Reset() {
 func (c *Counter) Increment() {
 	c.mu.Lock()
 	c.counter++
-	if c.counter >= 1000 {
+	if c.counter >= 1000*1000 {
 		c.counter = 1
 	}
 	c.mu.Unlock()
