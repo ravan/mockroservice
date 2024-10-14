@@ -12,6 +12,7 @@ Stitch together application topologies controlling each MockroService to mimic a
 - Define latency and error rate 
 - Define log messages to simulate functional processing during endpoint and route execution 
   - Messages define using golang templates and [Sprig](https://masterminds.github.io/sprig/) 
+- Ability to failed on expired certificate.
 - OpenTelemetry support
 
 ## Sample Config
@@ -23,6 +24,13 @@ port= 8080
 address= "0.0.0.0"
 serviceName= "My Service"
 logLevel = "info"   # debug, warn, error
+
+# When enabled will fail if supplied certificate is expired.
+[certificate]
+enabled = false
+delay = "1ms"
+certificate = "certs/certificate.pem"
+key = "certs/key.pem"
 
 # When enabled the service with use 10% of available memory. It will take 10 seconds to reach this limit.
 [memstress]

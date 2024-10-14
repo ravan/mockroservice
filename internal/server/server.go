@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"github.com/ravan/microservice-sim/internal/config"
@@ -36,6 +38,17 @@ func Run(conf *config.Configuration) error {
 	envVars = getEnvironmentVars()
 	otelActive = conf.OpenTelemetry.Trace.Enabled || conf.OpenTelemetry.Metrics.Enabled
 	serviceName = conf.ServiceName
+
+	//perform crashback loop
+	if conf.Certificate.Enabled {
+		conf.Certificate.GetDelayDuration().ApplyBefore(serviceName, "self")
+		err := validateCertAndKey(conf.Certificate.CertFile, conf.Certificate.KeyFile)
+		if err != nil {
+			slog.Error("invalid certificate", slog.Any("error", err))
+			os.Exit(1)
+		}
+	}
+
 	ctx := context.Background()
 	if otelActive {
 		shutdown, err := otel.InitializeOpenTelemetry(ctx, conf.OpenTelemetry)
@@ -68,13 +81,15 @@ func Run(conf *config.Configuration) error {
 			if string(uri[0]) == "." {
 				uri = uri[1:]
 			}
-			return fmt.Sprintf("%s.%s", serviceName, uri)
+			return uri
 		}
 		handler = otelhttp.NewHandler(
 			mux,
 			"/",
 			otelhttp.WithSpanNameFormatter(httpSpanName),
 		)
+	} else {
+		handler = mux
 	}
 
 	slog.Info("Listening on", slog.String("address", addr))
@@ -206,8 +221,7 @@ func handleRoute(ctx *context.Context, route *config.Route) error {
 	var span trace.Span
 	if otelActive {
 		var newCtx context.Context
-		newCtx, span = otel.Tracer.Start(*ctx,
-			fmt.Sprintf("%s.%s", serviceName, strings.ReplaceAll(route.Uri, "/", ".")))
+		newCtx, span = otel.Tracer.Start(*ctx, strings.ReplaceAll(route.Uri, "/", "."))
 		defer span.End()
 
 		tc := propagation.TraceContext{}
@@ -304,4 +318,36 @@ func getEnvironmentVars() map[string]string {
 		items[splits[0]] = splits[1]
 	}
 	return items
+}
+func validateCertAndKey(certPath, keyPath string) error {
+	// Read the certificate file
+	certPEM, err := os.ReadFile(certPath)
+	if err != nil {
+		return fmt.Errorf("failed to read certificate file: %v", err)
+	}
+
+	// Read the key file
+	keyPEM, err := os.ReadFile(keyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read key file: %v", err)
+	}
+
+	// Load the certificate
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return fmt.Errorf("failed to load certificate and key pair: %v", err)
+	}
+
+	// Parse the certificate to ensure it is valid
+	certParsed, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return fmt.Errorf("failed to parse certificate: %v", err)
+	}
+
+	// Give a vague error because this is used with the certificate expired observability scenario
+	if certParsed.NotAfter.Before(time.Now()) {
+		return fmt.Errorf("certificate error")
+	}
+
+	return nil
 }

@@ -18,10 +18,29 @@ type Configuration struct {
 	Port          int          `mapstructure:"port" validate:"required"`
 	LogLevel      string       `mapstructure:"logLevel"`
 	Logging       util.Logging `mapstructure:"logging"`
+	Certificate   Certificate  `mapstructure:"certificate"`
 	Endpoints     []Endpoint   `mapstructure:"endpoints"`
 	MemStress     MemStress    `mapstructure:"memstress" `
 	StressNg      StressNg     `mapstructure:"stressng" `
 	OpenTelemetry OtelConfig   `mapstructure:"otel"`
+}
+
+type Certificate struct {
+	Enabled       bool   `mapstructure:"enabled"`
+	Delay         string `mapstructure:"delay" `
+	CertFile      string `mapstructure:"certificate" validate:"required_with=Enabled"`
+	KeyFile       string `mapstructure:"key" validate:"required_with=Enabled"`
+	mutex         sync.Mutex
+	delayDuration *util.Delay
+}
+
+func (c *Certificate) GetDelayDuration() *util.Delay {
+	if c.delayDuration == nil {
+		c.mutex.Lock()
+		c.delayDuration = util.ParseDelay(c.Delay)
+		c.mutex.Unlock()
+	}
+	return c.delayDuration
 }
 
 type Endpoint struct {
@@ -110,6 +129,7 @@ func GetConfig(configFile string) (*Configuration, error) {
 	v.SetDefault("address", "0.0.0.0")
 	v.SetDefault("port", 8080)
 	v.SetDefault("logLevel", "info")
+	v.SetDefault("logging.logOnCall", 1)
 	v.SetDefault("stressng.enabled", false)
 	v.SetDefault("stressng.delay", "")
 	v.SetDefault("stressng.args", []string{"-c", "0", "-l", "10"})

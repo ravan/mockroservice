@@ -4,13 +4,14 @@ dotenv: ['./.env']
 
 vars:
   IMAGE_REPO: "{{.USER}}/mockroservice"
-  VERSION: 0.0.19
+  VERSION: 0.0.22
 
 tasks:
   docker-build:
     cmds:
-      - docker build . -t {{.IMAGE_REPO}}:{{.VERSION}}
+      - docker build . -t {{.IMAGE_REPO}}:{{.VERSION}} -t {{.IMAGE_REPO}}:latest
   docker-push:
     cmds:
       - echo $PASSWORD | docker login -u {{.USER}} --password-stdin
       - docker push {{.IMAGE_REPO}}:{{.VERSION}}
+      - docker push {{.IMAGE_REPO}}:latest
