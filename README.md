@@ -105,7 +105,7 @@ You can specify multiple service definitions in a single toml file by separating
 [Sample Services](./sample.toml.mockroservices)
 
 ```bash
-docker run --rm --name mockroservice -v .:/workspace ravan/mockroservice:0.0.11 /app/sim -c /workspace/sample.toml.mockroservices generate -o /workspace/sample-charts --name my-charts
+docker run --rm --name mockroservice -v .:/workspace ravan/mockroservice:0.0.22 /app/sim -c /workspace/sample.toml.mockroservices generate -o /workspace/sample-charts --name my-charts
 ```
 
 Now you can deploy the services using Helm.
